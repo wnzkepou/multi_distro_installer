@@ -310,7 +310,7 @@ def sync_refind_kernels(p_efi: str, p_boot: str, p_btrfs: str):
                     f"    volume {partuuid_btrfs}",
                     f"    loader /{os_id}/@/boot/{kernels[-1].name}",
                     f"    initrd /{os_id}/@/boot/{initrds[-1].name}",
-                    f'    options "root=UUID={uuid_btrfs} rootflags=subvol={os_id}/@ modules=sd-mod,usb-storage,btrfs rootfstype=btrfs rw"',
+                    f'    options "root=UUID={uuid_btrfs} rootflags=subvol={os_id}/@ modules=sd-mod,usb-storage,btrfs rootfstype=btrfs console=tty1 console=ttyS0,115200n8 rw"',
                     "}",
                     "",
                 ])

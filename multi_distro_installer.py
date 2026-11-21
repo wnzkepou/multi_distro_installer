@@ -1031,6 +1031,14 @@ def configure_post_chroot(target: Path, p_btrfs: str, distro: dict, user_cfg: di
                     "shadow", "sudo", "doas", "bash", "sbsigntool",
                 ],
             )
+            chroot_run(target, ["setup-keymap", "us", "us"], check=False)
+            keymaps_conf = target / "etc" / "conf.d" / "keymaps"
+            keymaps_conf.parent.mkdir(parents=True, exist_ok=True)
+            keymaps_conf.write_text('keymap="us"\n')
+            chroot_run(target, ["rc-update", "add", "keymaps", "boot"], check=False)
+            chroot_run(target, ["rc-update", "add", "udev", "boot"], check=False)
+            chroot_run(target, ["rc-update", "add", "udev-trigger", "boot"], check=False)
+            chroot_run(target, ["rc-update", "add", "seatd", "default"], check=False)
             chroot_run(target, ["groupadd", "-f", "-g", gid, uname])
             chroot_run(target, ["groupadd", "-f", "libvirt"], check=False)
             chroot_run(target, ["groupadd", "-f", "kvm"], check=False)
@@ -1051,10 +1059,65 @@ def configure_post_chroot(target: Path, p_btrfs: str, distro: dict, user_cfg: di
             doas_conf.write_text("permit persist :wheel\n")
             modules_file = target / "etc" / "modules"
             existing_mods = modules_file.read_text() if modules_file.exists() else ""
-            if "tun" not in existing_mods.splitlines():
-                modules_file.write_text(
-                    existing_mods + ("tun\n" if existing_mods.endswith("\n") or not existing_mods else "\ntun\n")
-                )
+            module_names = [
+                "tun",
+                "i8042",
+                "serio",
+                "serio_raw",
+                "usbhid",
+                "hid_generic",
+                "hv_vmbus",
+                "hid_hyperv",
+                "hv_balloon",
+                "hv_utils",
+                "hv_netvsc",
+                "hv_storvsc",
+            ]
+            module_lines = existing_mods.splitlines()
+            for module_name in module_names:
+                if module_name not in module_lines:
+                    module_lines.append(module_name)
+            modules_file.write_text("\n".join(module_lines) + "\n")
+
+            modules_load_dir = target / "etc" / "modules-load.d"
+            modules_load_dir.mkdir(parents=True, exist_ok=True)
+            (modules_load_dir / "hyperv-keyboard.conf").write_text(
+                "i8042\nserio\nserio_raw\nusbhid\nhid_generic\nhv_vmbus\nhid_hyperv\n"
+            )
+
+            xorg_dir = target / "etc" / "X11" / "xorg.conf.d"
+            xorg_dir.mkdir(parents=True, exist_ok=True)
+            (xorg_dir / "00-hyperv-keyboard.conf").write_text(
+                'Section "InputClass"\n'
+                '    Identifier "Hyper-V keyboard"\n'
+                '    MatchIsKeyboard "on"\n'
+                '    Option "XkbLayout" "us"\n'
+                "EndSection\n"
+            )
+            sway_dir = target / "etc" / "sway" / "config.d"
+            sway_dir.mkdir(parents=True, exist_ok=True)
+            (sway_dir / "10-hyperv-keyboard.conf").write_text(
+                "input type:keyboard {\n"
+                "    xkb_layout us\n"
+                "}\n"
+            )
+
+            inittab = target / "etc" / "inittab"
+            if inittab.exists():
+                inittab_text = inittab.read_text()
+                gettys = [
+                    "tty1::respawn:/sbin/getty 38400 tty1",
+                    "ttyS0::respawn:/sbin/getty -L 115200 ttyS0 vt100",
+                    "hvc0::respawn:/sbin/getty -L 115200 hvc0 vt100",
+                ]
+                for getty in gettys:
+                    console_name = getty.split(":", 1)[0]
+                    if not any(
+                        line.strip().startswith(f"{console_name}:")
+                        for line in inittab_text.splitlines()
+                    ):
+                        inittab_text = inittab_text.rstrip() + "\n" + getty + "\n"
+                inittab.write_text(inittab_text)
             if distro["dm"]:
                 chroot_run(target, ["rc-update", "add", distro["dm"], "default"], check=False)
                 chroot_run(target, ["rc-update", "add", "libvirtd", "default"], check=False)
@@ -1189,6 +1252,7 @@ def bootstrap_distro(
                     "alpine-base", "linux-lts", "btrfs-progs", "openrc",
                     arch["qemu_system"], "qemu-img", "libvirt-daemon", "libvirt-client",
                     arch["alpine_efi_pkg"], "swtpm", "virt-install",
+                    "kbd", "eudev", "libinput", "xf86-input-libinput",
                     *distro["desktop"].split(),
                 ],
             )
@@ -1391,7 +1455,8 @@ def setup_refind_and_shim(
             volume_id = partuuid_btrfs
             options = (
                 f"root=UUID={uuid_btrfs} rootflags=subvol={did}/@ "
-                f"modules=sd-mod,usb-storage,btrfs rootfstype=btrfs rw"
+                f"modules=sd-mod,usb-storage,btrfs rootfstype=btrfs "
+                f"console=tty1 console=ttyS0,115200n8 rw"
             )
         stanzas.extend([
             f'menuentry "{d["name"]} (Secure Boot)" {{',
