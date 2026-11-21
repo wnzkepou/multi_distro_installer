@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import errno
 import getpass
 import json
 import os
@@ -25,6 +26,8 @@ REFIND_VERSION = "0.14.2"
 REFIND_ZIP_URL = f"https://sourceforge.net/projects/refind/files/{REFIND_VERSION}/refind-bin-{REFIND_VERSION}.zip/download"
 ALPINE_BRANCH = "v3.24"
 ALPINE_VERSION = "3.24.4"
+EFI_PARTITION_END_MIB = 1025
+BOOT_PARTITION_END_MIB = 5121
 
 DISTROS = {
     "1": {
@@ -627,10 +630,16 @@ def check_and_wipe_disk(disk: str):
 def create_partitions(disk: str) -> tuple[str, str, str]:
     print(f"\n--- Creating GPT & Partitions on {disk} ---")
     run(["parted", "-s", disk, "mklabel", "gpt"])
-    run(["parted", "-s", disk, "mkpart", "EFI", "fat32", "1MiB", "513MiB"])
+    run(["parted", "-s", disk, "mkpart", "EFI", "fat32", "1MiB", f"{EFI_PARTITION_END_MIB}MiB"])
     run(["parted", "-s", disk, "set", "1", "esp", "on"])
-    run(["parted", "-s", disk, "mkpart", "FEDORA_BOOT", "ext4", "513MiB", "4609MiB"])
-    run(["parted", "-s", disk, "mkpart", "MULTIBOOT_BTRFS", "btrfs", "4609MiB", "100%"])
+    run([
+        "parted", "-s", disk, "mkpart", "FEDORA_BOOT", "ext4",
+        f"{EFI_PARTITION_END_MIB}MiB", f"{BOOT_PARTITION_END_MIB}MiB",
+    ])
+    run([
+        "parted", "-s", disk, "mkpart", "MULTIBOOT_BTRFS", "btrfs",
+        f"{BOOT_PARTITION_END_MIB}MiB", "100%",
+    ])
     run(["partprobe", disk])
 
     p_efi = get_part_path(disk, 1)
@@ -1319,6 +1328,30 @@ def bootstrap_distro(
     }
 
 
+def copy_efi_file(source: Path, destination: Path):
+    """Copy a file to the EFI partition with a clear capacity error."""
+    source_size = source.stat().st_size
+    filesystem = os.statvfs(destination.parent)
+    available = filesystem.f_bavail * filesystem.f_frsize
+    if source_size > available:
+        available_mib = available // (1024 * 1024)
+        sys.exit(
+            f"Error: EFI partition ran out of space copying {source.name}; "
+            f"{source_size // (1024 * 1024)} MiB is needed, but only {available_mib} MiB is available."
+        )
+    try:
+        shutil.copy2(source, destination)
+    except OSError as exc:
+        if destination.is_file():
+            destination.unlink()
+        if exc.errno == errno.ENOSPC:
+            sys.exit(
+                f"Error: EFI partition ran out of space copying {source.name}. "
+                "The EFI partition may need to be larger or unused EFI files may need cleanup."
+            )
+        raise
+
+
 def setup_refind_and_shim(
     disk: str,
     p_efi: str,
@@ -1373,10 +1406,17 @@ def setup_refind_and_shim(
     boot_mnt = MOUNT_ROOT / "boot_setup"
     boot_mnt.mkdir(parents=True, exist_ok=True)
     run(["mount", p_boot, str(boot_mnt)])
-    for source in sorted(boot_mnt.glob("vmlinuz-*")):
-        shutil.copy2(source, fedora_efi_dir / source.name)
-    for source in sorted(boot_mnt.glob("initramfs-*.img")):
-        shutil.copy2(source, fedora_efi_dir / source.name)
+    fedora_files: set[Path] = set()
+    for entry in boot_entries:
+        if entry["distro"]["type"] != "fedora":
+            continue
+        for image in (entry["kernel"], entry["initrd"]):
+            if image:
+                source = boot_mnt / Path(image).name
+                if source.is_file():
+                    fedora_files.add(source)
+    for source in sorted(fedora_files):
+        copy_efi_file(source, fedora_efi_dir / source.name)
 
     refind_bin, btrfs_drv_src = locate_refind_assets()
     if not refind_bin:
@@ -1388,7 +1428,7 @@ def setup_refind_and_shim(
     drivers_dst = refind_dir / f"drivers_{sfx}"
     drivers_dst.mkdir(parents=True, exist_ok=True)
     if btrfs_drv_src and btrfs_drv_src.exists():
-        shutil.copy2(btrfs_drv_src, drivers_dst / f"btrfs_{sfx}.efi")
+        copy_efi_file(btrfs_drv_src, drivers_dst / f"btrfs_{sfx}.efi")
 
     signed_refind = refind_dir / grub_name
     run([
@@ -1398,13 +1438,13 @@ def setup_refind_and_shim(
         "--output", str(signed_refind),
         str(refind_bin),
     ])
-    shutil.copy2(shim_src, refind_dir / shim_name)
-    shutil.copy2(shim_src, boot_fallback_dir / boot_fallback_name)
-    shutil.copy2(signed_refind, boot_fallback_dir / grub_name)
+    copy_efi_file(shim_src, refind_dir / shim_name)
+    copy_efi_file(shim_src, boot_fallback_dir / boot_fallback_name)
+    copy_efi_file(signed_refind, boot_fallback_dir / grub_name)
     if mm_src and mm_src.exists():
-        shutil.copy2(mm_src, refind_dir / mm_name)
-        shutil.copy2(mm_src, boot_fallback_dir / mm_name)
-    shutil.copy2(mok["der"], efi_mnt / "MOK.der")
+        copy_efi_file(mm_src, refind_dir / mm_name)
+        copy_efi_file(mm_src, boot_fallback_dir / mm_name)
+    copy_efi_file(mok["der"], efi_mnt / "MOK.der")
 
     btrfs_drv = drivers_dst / f"btrfs_{sfx}.efi"
     if btrfs_drv.exists():

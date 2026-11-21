@@ -30,7 +30,7 @@ Designed for developers who frequently hop across Linux distributions (Fedora, D
 
 | Partition | Size | Filesystem | Label | Mount Point / Purpose |
 | :--- | :--- | :--- | :--- | :--- |
-| Part 1 | `512 MiB` | `FAT32` (ESP) | `EFI` | `/boot/efi` — Shared UEFI System Partition (`shim`, `rEFInd`, `MOK.der`) |
+| Part 1 | `1024 MiB` | `FAT32` (ESP) | `EFI` | `/boot/efi` — Shared UEFI System Partition (`shim`, `rEFInd`, `MOK.der`) |
 | Part 2 | `4 GiB` | `ext4` | `FEDORA_BOOT` | `/boot` — Dedicated boot partition for Fedora |
 | Part 3 | `Remainder` | `Btrfs` | `MULTIBOOT_POOL` | Main Btrfs pool (`subvolid=5`) hosting `shared/` and `<os_id>/` folders |
 
