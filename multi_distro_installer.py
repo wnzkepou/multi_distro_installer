@@ -770,25 +770,33 @@ def provision_virtio_win_iso(target_root: Path):
         return
     if target_iso.exists() and not target_iso.is_file():
         sys.exit(f"Error: Expected a file at the VirtIO ISO path: {target_iso}")
-    cached_iso = CACHE_DIR / target_iso.name
-    if not cached_iso.is_symlink() and cached_iso.is_file() and cached_iso.stat().st_size > 0:
-        print(f"Moving cached VirtIO ISO to target storage: {target_iso}")
-        shutil.move(cached_iso, target_iso)
-    else:
-        cached_partial = cached_iso.with_name(f"{cached_iso.name}.part")
-        if (
-            not cached_partial.is_symlink()
-            and cached_partial.is_file()
-            and cached_partial.stat().st_size > 0
-        ):
-            if target_partial.is_file() and target_partial.stat().st_size >= cached_partial.stat().st_size:
-                cached_partial.unlink()
-            else:
-                if target_partial.exists():
-                    target_partial.unlink()
-                print(f"Moving partial VirtIO ISO download to target storage: {target_partial}")
-                shutil.move(cached_partial, target_partial)
-        download_cached_file(VIRTIO_WIN_URL, target_iso)
+    if REFIND_CACHE_DIR.is_symlink():
+        sys.exit(f"Error: Persistent installer cache path must not be a symlink: {REFIND_CACHE_DIR}")
+    REFIND_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    if not REFIND_CACHE_DIR.is_dir() or REFIND_CACHE_DIR.stat().st_uid != os.geteuid():
+        sys.exit(f"Error: Persistent installer cache must be a directory owned by the current user: {REFIND_CACHE_DIR}")
+    REFIND_CACHE_DIR.chmod(0o700)
+
+    cached_iso = REFIND_CACHE_DIR / target_iso.name
+    cached_partial = cached_iso.with_name(f"{cached_iso.name}.part")
+    if cached_iso.is_symlink() or cached_partial.is_symlink():
+        sys.exit(f"Error: Cached VirtIO ISO paths must not be symlinks: {cached_iso}")
+    if cached_iso.exists() and not cached_iso.is_file():
+        sys.exit(f"Error: Expected a file at the cached VirtIO ISO path: {cached_iso}")
+    if cached_partial.exists() and not cached_partial.is_file():
+        sys.exit(f"Error: Expected a file at the partial cached VirtIO ISO path: {cached_partial}")
+
+    download_cached_file(VIRTIO_WIN_URL, cached_iso)
+    if target_partial.exists():
+        target_partial.unlink()
+    try:
+        print(f"Copying cached VirtIO ISO to target storage: {target_iso}")
+        shutil.copy2(cached_iso, target_partial)
+        target_partial.replace(target_iso)
+    except OSError:
+        if target_partial.exists():
+            target_partial.unlink()
+        raise
     target_iso.chmod(0o644)
 
 
