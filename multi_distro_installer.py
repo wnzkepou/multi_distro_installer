@@ -1303,6 +1303,17 @@ def setup_refind_and_shim(
     boot_fallback_dir = efi_mnt / "EFI" / "BOOT"
     refind_dir.mkdir(parents=True, exist_ok=True)
     boot_fallback_dir.mkdir(parents=True, exist_ok=True)
+
+    fedora_efi_dir = refind_dir / "fedora"
+    fedora_efi_dir.mkdir(parents=True, exist_ok=True)
+    boot_mnt = MOUNT_ROOT / "boot_setup"
+    boot_mnt.mkdir(parents=True, exist_ok=True)
+    run(["mount", p_boot, str(boot_mnt)])
+    for source in sorted(boot_mnt.glob("vmlinuz-*")):
+        shutil.copy2(source, fedora_efi_dir / source.name)
+    for source in sorted(boot_mnt.glob("initramfs-*.img")):
+        shutil.copy2(source, fedora_efi_dir / source.name)
+
     refind_bin, btrfs_drv_src = locate_refind_assets()
     if not refind_bin:
         sys.exit(f"Error: refind_{sfx}.efi binary not found.")
@@ -1359,11 +1370,17 @@ def setup_refind_and_shim(
             print(f"Warning: No kernel/initrd pair found for {d['name']}; skipping rEFInd stanza.")
             continue
         if dtype == "fedora":
-            volume_id = partuuid_boot
+            volume_id = partuuid_efi = subprocess.check_output(
+                ["blkid", "-s", "PARTUUID", "-o", "value", p_efi], text=True
+            ).strip()
             options = (
                 f"root=UUID={uuid_btrfs} rootflags=subvol={did}/@ "
                 f"nvme_core.default_ps_max_latency_us=0 rw quiet rhgb"
             )
+            kernel_name = Path(kernel).name
+            initrd_name = Path(initrd).name
+            kernel = f"/EFI/refind/fedora/{kernel_name}"
+            initrd = f"/EFI/refind/fedora/{initrd_name}"
         elif dtype == "debian":
             volume_id = partuuid_btrfs
             options = (
@@ -1400,6 +1417,8 @@ def setup_refind_and_shim(
             "--loader", f"\\EFI\\refind\\{shim_name}",
         ], check=False)
 
+    if os.path.ismount(boot_mnt):
+        run(["umount", str(boot_mnt)])
     run(["umount", str(efi_mnt)])
 
 

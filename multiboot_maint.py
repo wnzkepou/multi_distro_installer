@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import os
 import re
+import shutil
 import sys
 import time
 import subprocess
@@ -226,6 +227,10 @@ def sync_refind_kernels(p_efi: str, p_boot: str, p_btrfs: str):
         subprocess.check_output(["blkid", "-s", "PARTUUID", "-o", "value", p_boot], text=True).strip()
         if p_boot else ""
     )
+    partuuid_efi = (
+        subprocess.check_output(["blkid", "-s", "PARTUUID", "-o", "value", p_efi], text=True).strip()
+        if p_efi else ""
+    )
 
     EFI_MNT.mkdir(parents=True, exist_ok=True)
     run(["mount", p_efi, str(EFI_MNT)])
@@ -233,6 +238,12 @@ def sync_refind_kernels(p_efi: str, p_boot: str, p_btrfs: str):
     if p_boot:
         BOOT_MNT.mkdir(parents=True, exist_ok=True)
         run(["mount", p_boot, str(BOOT_MNT)])
+        fedora_efi_dir = EFI_MNT / "EFI" / "refind" / "fedora"
+        fedora_efi_dir.mkdir(parents=True, exist_ok=True)
+        for source in sorted(BOOT_MNT.glob("vmlinuz-*")):
+            shutil.copy2(source, fedora_efi_dir / source.name)
+        for source in sorted(BOOT_MNT.glob("initramfs-*.img")):
+            shutil.copy2(source, fedora_efi_dir / source.name)
 
     stanzas = [
         "# Synced by Multi-Distro Maintenance Helper",
@@ -268,9 +279,9 @@ def sync_refind_kernels(p_efi: str, p_boot: str, p_btrfs: str):
                 kernel, initrd = paired
                 stanzas.extend([
                     f'menuentry "{pretty_name} (Secure Boot)" {{',
-                    f"    volume {partuuid_boot}",
-                    f"    loader /{kernel.name}",
-                    f"    initrd /{initrd.name}",
+                    f"    volume {partuuid_efi}",
+                    f"    loader /EFI/refind/fedora/{kernel.name}",
+                    f"    initrd /EFI/refind/fedora/{initrd.name}",
                     f'    options "root=UUID={uuid_btrfs} rootflags=subvol={os_id}/@ rw quiet rhgb"',
                     "}",
                     "",
