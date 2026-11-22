@@ -45,6 +45,7 @@ DISTROS = {
         "name": "Fedora GNOME",
         "type": "fedora",
         "desktop": "@workstation-product-environment",
+        "initial_packages": ["gparted"],
         "dm": "gdm",
         "dm_subvol": "@gdm",
         "dm_mount": "/var/lib/gdm",
@@ -55,6 +56,7 @@ DISTROS = {
         "name": "Debian GNOME",
         "type": "debian",
         "desktop": "task-gnome-desktop",
+        "initial_packages": ["gparted"],
         "dm": "gdm3",
         "dm_subvol": "@gdm3",
         "dm_mount": "/var/lib/gdm3",
@@ -1008,6 +1010,15 @@ def configure_post_chroot(target: Path, p_btrfs: str, distro: dict, user_cfg: di
     hostname = f"dev-{did.replace('_', '-')}"
     print(f"\n--- Configuring Post-Chroot User, KVM/Libvirt & Services for {distro['name']} ---")
     (target / "etc" / "hostname").write_text(f"{hostname}\n")
+    (target / "etc" / "timezone").write_text("UTC\n")
+    localtime = target / "etc" / "localtime"
+    if localtime.is_symlink() or localtime.is_file():
+        localtime.unlink()
+    os.symlink("/usr/share/zoneinfo/UTC", localtime)
+    if dtype == "alpine":
+        alpine_clock_dir = target / "etc" / "conf.d"
+        alpine_clock_dir.mkdir(parents=True, exist_ok=True)
+        (alpine_clock_dir / "clock").write_text('clock="UTC"\n')
 
     extra_binds: list[tuple[Path, Path]] = []
     if dtype == "alpine":
@@ -1213,7 +1224,7 @@ def bootstrap_distro(
             "kernel", "btrfs-progs", "snapper", "libdnf5-plugin-actions",
             "sudo", "akmods", "kmodtool", "openssl", "mokutil",
             f"shim-{sfx}", f"grub2-efi-{sfx}", distro["desktop"],
-        ] + cache_arg
+        ] + distro.get("initial_packages", []) + cache_arg
         with chroot_env(target, mount_run=False, mount_efivars=False):
             run(cmd)
     elif distro["type"] == "debian":
@@ -1246,6 +1257,7 @@ def bootstrap_distro(
                     "dkms", f"linux-headers-{arch['debian_arch']}", "shim-signed",
                     f"grub-efi-{arch['debian_arch']}-signed",
                     "mokutil", "sbsigntool", distro["desktop"],
+                    *distro.get("initial_packages", []),
                 ],
             )
     elif distro["type"] == "alpine":
