@@ -1059,6 +1059,16 @@ def configure_post_chroot(target: Path, p_btrfs: str, distro: dict, user_cfg: di
                     "shadow", "sudo", "doas", "bash", "sbsigntool",
                 ],
             )
+            network_interfaces = target / "etc" / "network" / "interfaces"
+            network_interfaces.parent.mkdir(parents=True, exist_ok=True)
+            network_interfaces.write_text(
+                "auto lo\n"
+                "iface lo inet loopback\n"
+                "\n"
+                "auto eth0\n"
+                "iface eth0 inet dhcp\n"
+            )
+            chroot_run(target, ["rc-update", "add", "networking", "boot"])
             chroot_run(target, ["setup-keymap", "us", "us"], check=False)
             keymaps_conf = target / "etc" / "conf.d" / "keymaps"
             keymaps_conf.parent.mkdir(parents=True, exist_ok=True)
