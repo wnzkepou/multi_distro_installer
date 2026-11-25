@@ -11,7 +11,9 @@ Designed for developers who frequently hop across Linux distributions (Fedora, D
 - Folder-Isolated Btrfs Subvolume Hierarchy: Every OS lives inside its own top-level directory (`<os_id>/@*`) in `subvolid=5`, eliminating cross-distro file collisions while sharing `shared/@projects`, `shared/@containers`, `shared/@libvirt`, and `shared/@swap`.
 - End-to-End UEFI Secure Boot: Chains Microsoft-CA-signed shim → locally MOK-signed rEFInd (`grub<arch>.efi`) + MOK-signed `btrfs_<arch>.efi` → signed kernels and automatic out-of-tree module signing (`akmods` on Fedora, `DKMS` on Debian, `kernel-hooks.d` on Alpine).
 - Automated Snapper Baseline & Rollbacks: Fedora and Debian initialize Snapper (`root` config) mapped to `<os_id>/@snapshots` and capture an immediate clean baseline; Fedora also adds DNF5 transaction hooks. Alpine 3.24 does not package Snapper, so its `@snapshots` subvolume remains empty.
+- Debian APT Sources: Enables `main`, `contrib`, `non-free`, and `non-free-firmware` for Debian package and security repositories in every install.
 - Alpine Network: Configures `eth0` for DHCP and enables OpenRC networking at boot so installed Alpine systems have network connectivity.
+- Alpine XFCE: Installs X.Org, LightDM's OpenRC service, `elogind`, and D-Bus; enables the services LightDM needs to start a graphical session.
 - Cross-Distro Windows 11 KVM Provisioning (`win11_vm.py`): Provisions NVMe-tuned qcow2 disks (`nodatacow`, `discard='unmap'`, `io='native'`) with UEFI Secure Boot (`AAVMF` / `OVMF`), virtual TPM 2.0 (`swtpm`), `virtio-win.iso`, and unattended `autounattend.xml` driver injection inside `shared/@libvirt`—re-attachable across any booted distro in one command.
 
 ## Supported Target Operating Systems (arm64 & amd64)

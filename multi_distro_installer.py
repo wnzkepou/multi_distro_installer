@@ -77,6 +77,13 @@ DISTROS = {
         "name": "Alpine XFCE",
         "type": "alpine",
         "desktop": "xfce4 xfce4-terminal lightdm lightdm-gtk-greeter",
+        "initial_packages": [
+            "dbus-openrc",
+            "elogind",
+            "elogind-openrc",
+            "lightdm-openrc",
+            "xorg-server",
+        ],
         "dm": "lightdm",
         "dm_subvol": None,
         "dm_mount": None,
@@ -1157,6 +1164,9 @@ def configure_post_chroot(target: Path, p_btrfs: str, distro: dict, user_cfg: di
                         inittab_text = inittab_text.rstrip() + "\n" + getty + "\n"
                 inittab.write_text(inittab_text)
             if distro["dm"]:
+                if distro["dm"] == "lightdm":
+                    chroot_run(target, ["rc-update", "add", "dbus", "default"])
+                    chroot_run(target, ["rc-update", "add", "elogind", "default"])
                 chroot_run(target, ["rc-update", "add", distro["dm"], "default"], check=False)
                 chroot_run(target, ["rc-update", "add", "libvirtd", "default"], check=False)
             if did == "alpine_sway":
@@ -1176,6 +1186,17 @@ def configure_post_chroot(target: Path, p_btrfs: str, distro: dict, user_cfg: di
 
     configure_snapper_baseline(target, p_btrfs, distro, user_cfg)
     configure_secure_boot_module_signing(target, distro, mok)
+
+
+def apply_debian_overlay(target: Path):
+    overlay = Path(__file__).resolve().parent / "overlay" / "debian"
+    if not overlay.is_dir():
+        raise FileNotFoundError(f"Debian configuration overlay not found: {overlay}")
+
+    shutil.copytree(overlay, target, dirs_exist_ok=True)
+    legacy_sources = target / "etc" / "apt" / "sources.list"
+    if legacy_sources.exists() or legacy_sources.is_symlink():
+        legacy_sources.unlink()
 
 
 def bootstrap_distro(
@@ -1244,6 +1265,7 @@ def bootstrap_distro(
             "debootstrap", f"--arch={arch['debian_arch']}", f"--cache-dir={deb_cache}",
             "trixie", str(target), "https://deb.debian.org/debian",
         ])
+        apply_debian_overlay(target)
         apt_cache = deb_cache / "apt"
         apt_archives = apt_cache / "archives"
         apt_lists = apt_cache / "lists"
@@ -1292,6 +1314,7 @@ def bootstrap_distro(
                     arch["qemu_system"], "qemu-img", "libvirt-daemon", "libvirt-client",
                     arch["alpine_efi_pkg"], "swtpm", "virt-install",
                     "kbd", "eudev", "libinput", "xf86-input-libinput",
+                    *distro.get("initial_packages", []),
                     *distro["desktop"].split(),
                 ],
             )
