@@ -305,6 +305,8 @@ def sync_refind_kernels(p_efi: str, p_boot: str, p_btrfs: str):
             kernels = sorted(boot_dir.glob("vmlinuz-lts*"))
             initrds = sorted(boot_dir.glob("initramfs-lts*"))
             if kernels and initrds:
+                ensure_alpine_kernel_signed(root_dir, kernels[-1])
+                ensure_alpine_kernel_update_hook(root_dir)
                 stanzas.extend([
                     f'menuentry "{pretty_name} (Secure Boot)" {{',
                     f"    volume {partuuid_btrfs}",
@@ -325,6 +327,52 @@ def sync_refind_kernels(p_efi: str, p_boot: str, p_btrfs: str):
     run(["umount", str(EFI_MNT)])
 
 
+def ensure_alpine_kernel_signed(root_dir: Path, kernel: Path):
+    mok_dir = root_dir / "etc" / "secureboot-mok"
+    key = mok_dir / "MOK.key"
+    cert = mok_dir / "MOK.crt"
+    if not key.is_file() or not cert.is_file():
+        raise FileNotFoundError(f"Alpine MOK signing key or certificate is missing from {mok_dir}")
+    if shutil.which("sbverify") is None:
+        raise FileNotFoundError("sbverify is required; install the sbsigntools package on this system")
+
+    verification = subprocess.run(
+        ["sbverify", "--cert", str(cert), str(kernel)],
+        capture_output=True,
+        text=True,
+    )
+    if verification.returncode == 0:
+        print(f"Alpine kernel already has a valid MOK signature: {kernel}")
+        return
+
+    print(f"Signing Alpine kernel with its enrolled MOK: {kernel}")
+    installer.sign_alpine_kernel(kernel, key, cert)
+    verification = subprocess.run(
+        ["sbverify", "--cert", str(cert), str(kernel)],
+        capture_output=True,
+        text=True,
+    )
+    if verification.returncode != 0:
+        detail = verification.stderr.strip() or verification.stdout.strip()
+        raise RuntimeError(f"Alpine kernel signature verification failed for {kernel}: {detail}")
+
+
+def ensure_alpine_kernel_update_hook(root_dir: Path):
+    with installer.chroot_env(root_dir, mount_efivars=False):
+        result = installer.chroot_run(
+            root_dir,
+            ["/sbin/apk", "add", "kernel-hooks", "sbsigntool"],
+            check=False,
+        )
+    if result.returncode != 0:
+        print(
+            "WARNING: Could not install Alpine kernel-hooks/sbsigntool; "
+            "the current kernel is signed, but future kernel updates may not be."
+        )
+        return
+    installer.write_alpine_kernel_hook(root_dir)
+
+
 def main():
     if os.geteuid() != 0:
         sys.exit("Run this maintenance helper as root.")
@@ -337,7 +385,7 @@ def main():
             print("  [1] Inspect Btrfs pool & Snapper snapshots")
             print("  [2] Atomic Snapper rollback (<os_folder>/@)")
             print("  [3] Wipe a single OS (<os_folder> + swapfile + rEFInd entry)")
-            print("  [4] Sync rEFInd kernel/initrd entries after kernel updates")
+            print("  [4] Repair Alpine kernel signatures & sync rEFInd entries")
             print("  [5] Add / Reinstall a single OS into existing pool")
             print("  [6] Exit")
 

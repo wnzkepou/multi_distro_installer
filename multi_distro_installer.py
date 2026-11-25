@@ -406,6 +406,7 @@ def preflight_check():
         "tar": ("tar", "tar"),
         "openssl": ("openssl", "openssl"),
         "sbsign": ("sbsigntools", "sbsigntool"),
+        "sbverify": ("sbsigntools", "sbverify"),
         "mokutil": ("mokutil", "mokutil"),
         "efibootmgr": ("efibootmgr", "efibootmgr"),
     }
@@ -910,6 +911,49 @@ def configure_snapper_baseline(target: Path, p_btrfs: str, distro: dict, user_cf
         )
 
 
+def sign_alpine_kernel(kernel: Path, key: Path, cert: Path):
+    signed_kernel = kernel.with_name(f"{kernel.name}.signed")
+    try:
+        run([
+            "sbsign",
+            "--key", str(key),
+            "--cert", str(cert),
+            "--output", str(signed_kernel),
+            str(kernel),
+        ])
+        verification = subprocess.run(
+            ["sbverify", "--cert", str(cert), str(signed_kernel)],
+            capture_output=True,
+            text=True,
+        )
+        if verification.returncode != 0:
+            detail = verification.stderr.strip() or verification.stdout.strip()
+            raise RuntimeError(f"Alpine kernel signature verification failed for {kernel}: {detail}")
+        shutil.copystat(kernel, signed_kernel)
+        signed_kernel.replace(kernel)
+    finally:
+        signed_kernel.unlink(missing_ok=True)
+
+
+def write_alpine_kernel_hook(target: Path):
+    hook_script = target / "etc" / "kernel-hooks.d" / "50-sign-kernel-mok.hook"
+    hook_script.parent.mkdir(parents=True, exist_ok=True)
+    hook_script.write_text(
+        "#!/bin/sh\n"
+        "set -eu\n"
+        '[ "$#" -ge 2 ] && [ "$1" = "lts" ] && [ -n "$2" ] || exit 0\n'
+        'kernel="/boot/vmlinuz-lts"\n'
+        '[ -f "$kernel" ] || exit 0\n'
+        'if sbverify --cert /etc/secureboot-mok/MOK.crt "$kernel" >/dev/null 2>&1; then exit 0; fi\n'
+        'tmp="$kernel.signed.$$"\n'
+        'trap \'rm -f "$tmp"\' EXIT HUP INT TERM\n'
+        'sbsign --key /etc/secureboot-mok/MOK.key --cert /etc/secureboot-mok/MOK.crt '
+        '--output "$tmp" "$kernel"\n'
+        'mv -f "$tmp" "$kernel"\n'
+    )
+    hook_script.chmod(0o755)
+
+
 def configure_secure_boot_module_signing(target: Path, distro: dict, mok: dict[str, Path]):
     dtype = distro["type"]
     print(f"--- Configuring Secure Boot Module & Kernel Signing for {distro['name']} ---")
@@ -990,23 +1034,10 @@ def configure_secure_boot_module_signing(target: Path, distro: dict, mok: dict[s
     elif dtype == "alpine":
         vmlinuz = target / "boot" / "vmlinuz-lts"
         if vmlinuz.exists():
-            run([
-                "sbsign",
-                "--key", str(mok["key"]),
-                "--cert", str(mok["crt"]),
-                "--output", str(vmlinuz),
-                str(vmlinuz),
-            ])
-        hook_script = target / "etc" / "kernel-hooks.d" / "50-sign-kernel-mok.hook"
-        hook_script.parent.mkdir(parents=True, exist_ok=True)
-        hook_script.write_text(
-            "#!/bin/sh\n"
-            "if [ -f /boot/vmlinuz-lts ] && [ -f /etc/secureboot-mok/MOK.key ]; then\n"
-            "  sbsign --key /etc/secureboot-mok/MOK.key --cert /etc/secureboot-mok/MOK.crt "
-            "--output /boot/vmlinuz-lts /boot/vmlinuz-lts\n"
-            "fi\n"
-        )
-        hook_script.chmod(0o755)
+            sign_alpine_kernel(vmlinuz, mok["key"], mok["crt"])
+        write_alpine_kernel_hook(target)
+
+
 def configure_post_chroot(target: Path, p_btrfs: str, distro: dict, user_cfg: dict, mok: dict[str, Path]):
     did = distro["id"]
     dtype = distro["type"]
@@ -1310,7 +1341,7 @@ def bootstrap_distro(
                 target,
                 [
                     "env", "TMPDIR=/var/tmp", "/sbin/apk", "add",
-                    "alpine-base", "linux-lts", "btrfs-progs", "openrc",
+                    "alpine-base", "linux-lts", "kernel-hooks", "btrfs-progs", "openrc",
                     arch["qemu_system"], "qemu-img", "libvirt-daemon", "libvirt-client",
                     arch["alpine_efi_pkg"], "swtpm", "virt-install",
                     "kbd", "eudev", "libinput", "xf86-input-libinput",
