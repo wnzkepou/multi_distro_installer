@@ -7,6 +7,9 @@ VIRTIO_WIN_URL = "https://fedorapeople.org/groups/virt/virtio-win/direct-downloa
 FLATPAK_PACKAGE = "flatpak"
 FLATHUB_REMOTE_NAME = "flathub"
 FLATHUB_REMOTE_URL = "https://dl.flathub.org/repo/flathub.flatpakrepo"
+SNAPD_PACKAGE = "snapd"
+SNAPD_SOCKET = "snapd.socket"
+SNAP_CLASSIC_PATH = "/var/lib/snapd/snap"
 
 _ARCHITECTURES = {
     "arm64": {

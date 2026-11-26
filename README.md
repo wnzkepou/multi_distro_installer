@@ -14,6 +14,7 @@ Designed for developers who frequently hop across Linux distributions (Fedora, D
 - Automated Snapper Baseline & Rollbacks: Fedora and Debian initialize Snapper (`root` config) mapped to `<os_id>/@snapshots` and capture an immediate clean baseline; Fedora also adds DNF5 transaction hooks. Alpine 3.24 does not package Snapper, so its `@snapshots` subvolume remains empty.
 - Debian APT Sources: Enables `main`, `contrib`, `non-free`, and `non-free-firmware` for Debian package and security repositories in every install.
 - Flatpak & Flathub: Installs Flatpak on Fedora, Debian, and Alpine, and enables the system-wide Flathub remote for each installation.
+- Snap: Installs `snapd`, enables `snapd.socket`, and configures the `/snap` classic path on Fedora and Debian; maintenance can apply this to existing systems.
 - Alpine Network: Configures `eth0` for DHCP and enables OpenRC networking at boot so installed Alpine systems have network connectivity.
 - Alpine Community Repository: Enables the Community repository before package installation for both Alpine variants.
 - Alpine XFCE: Installs X.Org, LightDM's OpenRC service, `elogind`, and D-Bus; enables the services LightDM needs to start a graphical session.
@@ -110,6 +111,7 @@ sudo ./multiboot_maint.py
 4. Repair Alpine Secure Boot & Sync Kernels: Signs Alpine LTS kernels with their enrolled MOK, installs the kernel-update signing hook, and updates `refind.conf`.
 5. Add / Reinstall Single OS: Deploys a new distro folder (or cleanly replaces an existing one) using your existing enrolled MOK keys. The maintenance helper follows the same single-distro selector contract as the installer, so it resolves the chosen distro as the first item from the valid selection list.
 6. Enable Alpine Community Repositories: Updates the repository configuration and package indexes for every installed Alpine system.
+7. Install / Enable Snap: Installs `snapd` and enables `snapd.socket` for all installed Fedora and Debian systems.
 
 ### 4. Windows 11 KVM Guest Provisioning (arm64 & amd64)
 

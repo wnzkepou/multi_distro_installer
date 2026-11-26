@@ -18,6 +18,9 @@ from multiboot_common import (
     FLATHUB_REMOTE_NAME,
     FLATHUB_REMOTE_URL,
     FLATPAK_PACKAGE,
+    SNAP_CLASSIC_PATH,
+    SNAPD_PACKAGE,
+    SNAPD_SOCKET,
     VIRTIO_WIN_URL,
     get_installer_arch_spec,
 )
@@ -1320,6 +1323,23 @@ def configure_flathub(target: Path):
         )
 
 
+def configure_snapd(target: Path):
+    with chroot_env(target, mount_run=False, mount_efivars=False):
+        chroot_run(target, ["systemctl", "enable", SNAPD_SOCKET])
+
+    snap_link = target / "snap"
+    if snap_link.is_symlink():
+        if os.readlink(snap_link) != SNAP_CLASSIC_PATH:
+            raise RuntimeError(f"Unexpected Snap classic path link: {snap_link}")
+    elif snap_link.is_dir() and not any(snap_link.iterdir()):
+        snap_link.rmdir()
+        snap_link.symlink_to(SNAP_CLASSIC_PATH)
+    elif snap_link.exists():
+        raise FileExistsError(f"Cannot create Snap classic path; {snap_link} already exists.")
+    else:
+        snap_link.symlink_to(SNAP_CLASSIC_PATH)
+
+
 def bootstrap_distro(
     p_efi: str,
     p_boot: str,
@@ -1376,7 +1396,7 @@ def bootstrap_distro(
         cmd = [
             "dnf", "-y", "--use-host-config", f"--installroot={target}", f"--forcearch={arch['fedora_arch']}",
             "install", "@core", "@virtualization", arch["fedora_efi_pkg"], "swtpm", "swtpm-tools",
-            FLATPAK_PACKAGE, "kernel", "btrfs-progs", "snapper", "libdnf5-plugin-actions",
+            FLATPAK_PACKAGE, SNAPD_PACKAGE, "kernel", "btrfs-progs", "snapper", "libdnf5-plugin-actions",
             "sudo", "akmods", "kmodtool", "openssl", "mokutil",
             f"shim-{sfx}", f"grub2-efi-{sfx}", distro["desktop"],
         ] + distro.get("initial_packages", []) + rpmfusion_release_packages + cache_arg
@@ -1407,7 +1427,7 @@ def bootstrap_distro(
                 target,
                 [
                     "env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "install", "-y",
-                    f"linux-image-{arch['debian_arch']}", "btrfs-progs", "snapper", "sudo",
+                    f"linux-image-{arch['debian_arch']}", "btrfs-progs", "snapper", SNAPD_PACKAGE, "sudo",
                     arch["debian_qemu_pkg"], "libvirt-daemon-system", "libvirt-clients",
                     arch["debian_efi_pkg"], "swtpm", "swtpm-tools", "virt-manager", FLATPAK_PACKAGE,
                     "dkms", f"linux-headers-{arch['debian_arch']}", "shim-signed",
@@ -1464,6 +1484,8 @@ def bootstrap_distro(
                 ],
             )
 
+    if distro["type"] in ("fedora", "debian"):
+        configure_snapd(target)
     configure_flathub(target)
     generate_fstab(target, p_efi, p_boot, p_btrfs, distro)
     configure_post_chroot(target, p_btrfs, distro, user_cfg, mok)
