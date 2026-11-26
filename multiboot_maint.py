@@ -423,7 +423,7 @@ def install_desktop_store_integrations():
         return
 
     for os_id, root_dir, distro, packages in os_roots:
-        print(f"Installing desktop store integrations for {os_id}...")
+        print(f"Installing desktop store integrations and repository AppStream data for {os_id}...")
         with installer.chroot_env(root_dir, mount_run=False, mount_efivars=False):
             if distro["type"] == "fedora":
                 installer.chroot_run(
@@ -431,6 +431,7 @@ def install_desktop_store_integrations():
                     [
                         "dnf", "-y", "install", installer.FLATPAK_PACKAGE,
                         installer.SNAPD_PACKAGE, *packages,
+                        *installer.RPMFUSION_APPSTREAM_PACKAGES,
                     ],
                 )
             else:
@@ -463,7 +464,7 @@ def main():
             print("  [5] Add / Reinstall a single OS into existing pool")
             print("  [6] Enable Alpine Community repositories")
             print("  [7] Install / Enable Snap on Fedora and Debian")
-            print("  [8] Install desktop store integrations on Fedora and Debian")
+            print("  [8] Install desktop store integrations & RPM Fusion AppStream data")
             print("  [9] Exit")
 
             choice = input("Select action: ").strip()

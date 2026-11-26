@@ -18,6 +18,7 @@ from multiboot_common import (
     FLATHUB_REMOTE_NAME,
     FLATHUB_REMOTE_URL,
     FLATPAK_PACKAGE,
+    RPMFUSION_APPSTREAM_PACKAGES,
     SNAP_CLASSIC_PATH,
     SNAPD_PACKAGE,
     SNAPD_SOCKET,
@@ -171,6 +172,13 @@ def get_rpmfusion_release_packages() -> list[str]:
         f"https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-{release}.noarch.rpm",
         f"https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-{release}.noarch.rpm",
     ]
+
+
+def install_rpmfusion_appstream_data(target: Path, fedora_arch: str, cache_arg: list[str]):
+    run([
+        "dnf", "-y", f"--installroot={target}", f"--forcearch={fedora_arch}",
+        "install", *RPMFUSION_APPSTREAM_PACKAGES, *cache_arg,
+    ])
 
 
 def set_target_passwords(target: Path, username: str, password: str):
@@ -1416,6 +1424,7 @@ def bootstrap_distro(
         ] + distro.get("initial_packages", []) + rpmfusion_release_packages + cache_arg
         with chroot_env(target, mount_run=False, mount_efivars=False):
             run(cmd)
+            install_rpmfusion_appstream_data(target, arch["fedora_arch"], cache_arg)
     elif distro["type"] == "debian":
         deb_cache = package_cache_root / f"debian_{arch['debian_arch']}"
         deb_cache.mkdir(parents=True, exist_ok=True)

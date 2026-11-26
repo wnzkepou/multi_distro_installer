@@ -10,6 +10,10 @@ FLATHUB_REMOTE_URL = "https://dl.flathub.org/repo/flathub.flatpakrepo"
 SNAPD_PACKAGE = "snapd"
 SNAPD_SOCKET = "snapd.socket"
 SNAP_CLASSIC_PATH = "/var/lib/snapd/snap"
+RPMFUSION_APPSTREAM_PACKAGES = (
+    "rpmfusion-free-appstream-data",
+    "rpmfusion-nonfree-appstream-data",
+)
 
 _ARCHITECTURES = {
     "arm64": {

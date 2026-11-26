@@ -10,7 +10,7 @@ Designed for developers who frequently hop across Linux distributions (Fedora, D
 - Automated Preflight & Self-Bootstrapping (`preflight_check`): Validates UEFI boot mode, verifies `btrfs-progs >= 6.1`, auto-installs missing host CLI tools (`debootstrap`, `sbsigntools`, `mokutil`, `efibootmgr`) via `dnf`/`apt-get`, and stages upstream rEFInd (0.14.2) binaries and Btrfs EFI drivers.
 - Folder-Isolated Btrfs Subvolume Hierarchy: Every OS lives inside its own top-level directory (`<os_id>/@*`) in `subvolid=5`, eliminating cross-distro file collisions while sharing `shared/@projects`, `shared/@containers`, `shared/@libvirt`, and `shared/@swap`.
 - End-to-End UEFI Secure Boot: Chains Microsoft-CA-signed shim → locally MOK-signed rEFInd (`grub<arch>.efi`) + MOK-signed `btrfs_<arch>.efi` → signed kernels. Fedora and Debian support automatic module signing with akmods/DKMS; Alpine re-signs LTS kernel updates through `kernel-hooks`.
-- Fedora RPM Fusion: Enables the official RPM Fusion free and nonfree repositories for every Fedora installation.
+- Fedora RPM Fusion: Enables the official RPM Fusion free/nonfree repositories and installs their AppStream metadata so GNOME Software and Discover can display repository apps.
 - Automated Snapper Baseline & Rollbacks: Fedora and Debian initialize Snapper (`root` config) mapped to `<os_id>/@snapshots` and capture an immediate clean baseline; Fedora also adds DNF5 transaction hooks. Alpine 3.24 does not package Snapper, so its `@snapshots` subvolume remains empty.
 - Debian APT Sources: Enables `main`, `contrib`, `non-free`, and `non-free-firmware` for Debian package and security repositories in every install.
 - Flatpak & Flathub: Installs Flatpak on Fedora, Debian, and Alpine, and enables the system-wide Flathub remote for each installation.
@@ -113,7 +113,7 @@ sudo ./multiboot_maint.py
 5. Add / Reinstall Single OS: Deploys a new distro folder (or cleanly replaces an existing one) using your existing enrolled MOK keys. The maintenance helper follows the same single-distro selector contract as the installer, so it resolves the chosen distro as the first item from the valid selection list.
 6. Enable Alpine Community Repositories: Updates the repository configuration and package indexes for every installed Alpine system.
 7. Install / Enable Snap: Installs `snapd` and enables `snapd.socket` for all installed Fedora and Debian systems.
-8. Install Desktop Store Integrations: Installs the selected GNOME Software or Plasma Discover package and available Snap/Flatpak backends for installed Fedora and Debian systems.
+8. Install Desktop Store Integrations: Installs the selected GNOME Software or Plasma Discover package and available Snap/Flatpak backends; for Fedora, also installs RPM Fusion AppStream metadata.
 
 ### 4. Windows 11 KVM Guest Provisioning (arm64 & amd64)
 
