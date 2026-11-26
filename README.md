@@ -13,6 +13,7 @@ Designed for developers who frequently hop across Linux distributions (Fedora, D
 - Fedora RPM Fusion: Enables the official RPM Fusion free and nonfree repositories for every Fedora installation.
 - Automated Snapper Baseline & Rollbacks: Fedora and Debian initialize Snapper (`root` config) mapped to `<os_id>/@snapshots` and capture an immediate clean baseline; Fedora also adds DNF5 transaction hooks. Alpine 3.24 does not package Snapper, so its `@snapshots` subvolume remains empty.
 - Debian APT Sources: Enables `main`, `contrib`, `non-free`, and `non-free-firmware` for Debian package and security repositories in every install.
+- Flatpak & Flathub: Installs Flatpak on Fedora, Debian, and Alpine, and enables the system-wide Flathub remote for each installation.
 - Alpine Network: Configures `eth0` for DHCP and enables OpenRC networking at boot so installed Alpine systems have network connectivity.
 - Alpine Community Repository: Enables the Community repository before package installation for both Alpine variants.
 - Alpine XFCE: Installs X.Org, LightDM's OpenRC service, `elogind`, and D-Bus; enables the services LightDM needs to start a graphical session.

@@ -4,6 +4,9 @@ from collections.abc import Sequence
 from os import PathLike
 
 VIRTIO_WIN_URL = "https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/virtio-win.iso"
+FLATPAK_PACKAGE = "flatpak"
+FLATHUB_REMOTE_NAME = "flathub"
+FLATHUB_REMOTE_URL = "https://dl.flathub.org/repo/flathub.flatpakrepo"
 
 _ARCHITECTURES = {
     "arm64": {

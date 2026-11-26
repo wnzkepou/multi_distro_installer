@@ -14,7 +14,13 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import NotRequired, TypedDict
 
-from multiboot_common import VIRTIO_WIN_URL, get_installer_arch_spec
+from multiboot_common import (
+    FLATHUB_REMOTE_NAME,
+    FLATHUB_REMOTE_URL,
+    FLATPAK_PACKAGE,
+    VIRTIO_WIN_URL,
+    get_installer_arch_spec,
+)
 from multiboot_common import run_command as run
 
 CACHE_DIR = Path("/tmp/multiboot_installer_cache")
@@ -1299,6 +1305,21 @@ def apply_debian_overlay(target: Path):
         legacy_sources.unlink()
 
 
+def configure_flathub(target: Path):
+    with chroot_env(target, mount_run=False, mount_efivars=False):
+        chroot_run(
+            target,
+            [
+                FLATPAK_PACKAGE,
+                "remote-add",
+                "--system",
+                "--if-not-exists",
+                FLATHUB_REMOTE_NAME,
+                FLATHUB_REMOTE_URL,
+            ],
+        )
+
+
 def bootstrap_distro(
     p_efi: str,
     p_boot: str,
@@ -1355,7 +1376,7 @@ def bootstrap_distro(
         cmd = [
             "dnf", "-y", "--use-host-config", f"--installroot={target}", f"--forcearch={arch['fedora_arch']}",
             "install", "@core", "@virtualization", arch["fedora_efi_pkg"], "swtpm", "swtpm-tools",
-            "kernel", "btrfs-progs", "snapper", "libdnf5-plugin-actions",
+            FLATPAK_PACKAGE, "kernel", "btrfs-progs", "snapper", "libdnf5-plugin-actions",
             "sudo", "akmods", "kmodtool", "openssl", "mokutil",
             f"shim-{sfx}", f"grub2-efi-{sfx}", distro["desktop"],
         ] + distro.get("initial_packages", []) + rpmfusion_release_packages + cache_arg
@@ -1388,7 +1409,7 @@ def bootstrap_distro(
                     "env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "install", "-y",
                     f"linux-image-{arch['debian_arch']}", "btrfs-progs", "snapper", "sudo",
                     arch["debian_qemu_pkg"], "libvirt-daemon-system", "libvirt-clients",
-                    arch["debian_efi_pkg"], "swtpm", "swtpm-tools", "virt-manager",
+                    arch["debian_efi_pkg"], "swtpm", "swtpm-tools", "virt-manager", FLATPAK_PACKAGE,
                     "dkms", f"linux-headers-{arch['debian_arch']}", "shim-signed",
                     f"grub-efi-{arch['debian_arch']}-signed",
                     "mokutil", "sbsigntool", distro["desktop"],
@@ -1417,7 +1438,7 @@ def bootstrap_distro(
                     "alpine-base", "linux-lts", "kernel-hooks", "btrfs-progs", "openrc",
                     arch["qemu_system"], "qemu-img", "libvirt-daemon", "libvirt-client",
                     arch["alpine_efi_pkg"], "swtpm", "virt-install",
-                    "kbd", "eudev", "libinput", "xf86-input-libinput",
+                    "kbd", "eudev", "libinput", "xf86-input-libinput", FLATPAK_PACKAGE,
                     *distro.get("initial_packages", []),
                     *distro["desktop"].split(),
                 ],
@@ -1443,6 +1464,7 @@ def bootstrap_distro(
                 ],
             )
 
+    configure_flathub(target)
     generate_fstab(target, p_efi, p_boot, p_btrfs, distro)
     configure_post_chroot(target, p_btrfs, distro, user_cfg, mok)
 
