@@ -448,6 +448,31 @@ def install_desktop_store_integrations():
         print(f"Desktop stores configured for {os_id}.")
 
 
+def install_extrepo_for_debian():
+    distro_by_id = {distro["id"]: distro for distro in installer.DISTROS.values()}
+    debian_roots = [
+        (os_id, POOL_MNT / os_id / "@")
+        for os_id in list_installed_os_folders()
+        if os_id in distro_by_id and distro_by_id[os_id]["type"] == "debian"
+    ]
+    if not debian_roots:
+        print("No installed Debian systems found.")
+        return
+
+    for os_id, root_dir in debian_roots:
+        print(f"Installing extrepo for {os_id}...")
+        with installer.chroot_env(root_dir, mount_run=False, mount_efivars=False):
+            installer.chroot_run(root_dir, ["apt-get", "update"])
+            installer.chroot_run(
+                root_dir,
+                [
+                    "env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "install", "-y",
+                    installer.EXTREPO_PACKAGE,
+                ],
+            )
+        print(f"extrepo installed for {os_id}.")
+
+
 def main():
     if os.geteuid() != 0:
         sys.exit("Run this maintenance helper as root.")
@@ -465,7 +490,8 @@ def main():
             print("  [6] Enable Alpine Community repositories")
             print("  [7] Install / Enable Snap on Fedora and Debian")
             print("  [8] Install desktop store integrations & RPM Fusion AppStream data")
-            print("  [9] Exit")
+            print("  [9] Install extrepo on Debian")
+            print("  [10] Exit")
 
             choice = input("Select action: ").strip()
             if choice == "1":
@@ -485,6 +511,8 @@ def main():
             elif choice == "8":
                 install_desktop_store_integrations()
             elif choice == "9":
+                install_extrepo_for_debian()
+            elif choice == "10":
                 break
             else:
                 print("Invalid choice.")

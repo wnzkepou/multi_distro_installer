@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import NotRequired, TypedDict
 
 from multiboot_common import (
+    EXTREPO_PACKAGE,
     FLATHUB_REMOTE_NAME,
     FLATHUB_REMOTE_URL,
     FLATPAK_PACKAGE,
@@ -1450,7 +1451,8 @@ def bootstrap_distro(
                 target,
                 [
                     "env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "install", "-y",
-                    f"linux-image-{arch['debian_arch']}", "btrfs-progs", "snapper", SNAPD_PACKAGE, "sudo",
+                    f"linux-image-{arch['debian_arch']}", "btrfs-progs", "snapper", SNAPD_PACKAGE,
+                    EXTREPO_PACKAGE, "sudo",
                     arch["debian_qemu_pkg"], "libvirt-daemon-system", "libvirt-clients",
                     arch["debian_efi_pkg"], "swtpm", "swtpm-tools", "virt-manager", FLATPAK_PACKAGE,
                     "dkms", f"linux-headers-{arch['debian_arch']}", "shim-signed",

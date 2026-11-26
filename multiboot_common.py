@@ -14,6 +14,7 @@ RPMFUSION_APPSTREAM_PACKAGES = (
     "rpmfusion-free-appstream-data",
     "rpmfusion-nonfree-appstream-data",
 )
+EXTREPO_PACKAGE = "extrepo"
 
 _ARCHITECTURES = {
     "arm64": {
