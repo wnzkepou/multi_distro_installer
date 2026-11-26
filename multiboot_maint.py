@@ -409,6 +409,44 @@ def install_snapd_for_fedora_debian():
         print(f"Snap enabled for {os_id}; the snapd socket will start on its next boot.")
 
 
+def install_desktop_store_integrations():
+    distro_by_id = {distro["id"]: distro for distro in installer.DISTROS.values()}
+    os_roots = []
+    for os_id in list_installed_os_folders():
+        distro = distro_by_id.get(os_id)
+        if distro and distro["type"] in ("fedora", "debian"):
+            packages = distro.get("software_center_packages", [])
+            os_roots.append((os_id, POOL_MNT / os_id / "@", distro, packages))
+
+    if not os_roots:
+        print("No installed Fedora or Debian systems found.")
+        return
+
+    for os_id, root_dir, distro, packages in os_roots:
+        print(f"Installing desktop store integrations for {os_id}...")
+        with installer.chroot_env(root_dir, mount_run=False, mount_efivars=False):
+            if distro["type"] == "fedora":
+                installer.chroot_run(
+                    root_dir,
+                    [
+                        "dnf", "-y", "install", installer.FLATPAK_PACKAGE,
+                        installer.SNAPD_PACKAGE, *packages,
+                    ],
+                )
+            else:
+                installer.chroot_run(root_dir, ["apt-get", "update"])
+                installer.chroot_run(
+                    root_dir,
+                    [
+                        "env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "install", "-y",
+                        installer.FLATPAK_PACKAGE, installer.SNAPD_PACKAGE, *packages,
+                    ],
+                )
+        installer.configure_snapd(root_dir)
+        installer.configure_flathub(root_dir)
+        print(f"Desktop stores configured for {os_id}.")
+
+
 def main():
     if os.geteuid() != 0:
         sys.exit("Run this maintenance helper as root.")
@@ -425,7 +463,8 @@ def main():
             print("  [5] Add / Reinstall a single OS into existing pool")
             print("  [6] Enable Alpine Community repositories")
             print("  [7] Install / Enable Snap on Fedora and Debian")
-            print("  [8] Exit")
+            print("  [8] Install desktop store integrations on Fedora and Debian")
+            print("  [9] Exit")
 
             choice = input("Select action: ").strip()
             if choice == "1":
@@ -443,6 +482,8 @@ def main():
             elif choice == "7":
                 install_snapd_for_fedora_debian()
             elif choice == "8":
+                install_desktop_store_integrations()
+            elif choice == "9":
                 break
             else:
                 print("Invalid choice.")

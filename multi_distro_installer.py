@@ -47,6 +47,7 @@ class DistroConfig(TypedDict):
     type: str
     desktop: str
     initial_packages: NotRequired[list[str]]
+    software_center_packages: NotRequired[list[str]]
     dm: str | None
     dm_subvol: str | None
     dm_mount: str | None
@@ -59,6 +60,7 @@ DISTROS: dict[str, DistroConfig] = {
         "name": "Fedora KDE",
         "type": "fedora",
         "desktop": "@kde-desktop-environment",
+        "software_center_packages": ["plasma-discover", "plasma-discover-flatpak", "plasma-discover-snap"],
         "dm": "sddm",
         "dm_subvol": "@sddm",
         "dm_mount": "/var/lib/sddm",
@@ -70,6 +72,7 @@ DISTROS: dict[str, DistroConfig] = {
         "type": "fedora",
         "desktop": "@workstation-product-environment",
         "initial_packages": ["gparted"],
+        "software_center_packages": ["gnome-software"],
         "dm": "gdm",
         "dm_subvol": "@gdm",
         "dm_mount": "/var/lib/gdm",
@@ -81,6 +84,11 @@ DISTROS: dict[str, DistroConfig] = {
         "type": "debian",
         "desktop": "task-gnome-desktop",
         "initial_packages": ["gparted"],
+        "software_center_packages": [
+            "gnome-software",
+            "gnome-software-plugin-flatpak",
+            "gnome-software-plugin-snap",
+        ],
         "dm": "gdm3",
         "dm_subvol": "@gdm3",
         "dm_mount": "/var/lib/gdm3",
@@ -91,6 +99,11 @@ DISTROS: dict[str, DistroConfig] = {
         "name": "Debian KDE",
         "type": "debian",
         "desktop": "task-kde-desktop",
+        "software_center_packages": [
+            "plasma-discover",
+            "plasma-discover-backend-flatpak",
+            "plasma-discover-backend-snap",
+        ],
         "dm": "sddm",
         "dm_subvol": "@sddm",
         "dm_mount": "/var/lib/sddm",
@@ -1399,6 +1412,7 @@ def bootstrap_distro(
             FLATPAK_PACKAGE, SNAPD_PACKAGE, "kernel", "btrfs-progs", "snapper", "libdnf5-plugin-actions",
             "sudo", "akmods", "kmodtool", "openssl", "mokutil",
             f"shim-{sfx}", f"grub2-efi-{sfx}", distro["desktop"],
+            *distro.get("software_center_packages", []),
         ] + distro.get("initial_packages", []) + rpmfusion_release_packages + cache_arg
         with chroot_env(target, mount_run=False, mount_efivars=False):
             run(cmd)
@@ -1433,6 +1447,7 @@ def bootstrap_distro(
                     "dkms", f"linux-headers-{arch['debian_arch']}", "shim-signed",
                     f"grub-efi-{arch['debian_arch']}-signed",
                     "mokutil", "sbsigntool", distro["desktop"],
+                    *distro.get("software_center_packages", []),
                     *distro.get("initial_packages", []),
                 ],
             )
