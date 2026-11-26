@@ -783,6 +783,54 @@ def prepare_alpine_cache(target_root: Path, cache_dir: Path):
     os.symlink("/var/cache/apk", cache_link)
 
 
+def enable_alpine_community_repositories(target_root: Path):
+    repositories_file = target_root / "etc" / "apk" / "repositories"
+    repositories_file.parent.mkdir(parents=True, exist_ok=True)
+    lines = repositories_file.read_text().splitlines() if repositories_file.is_file() else []
+
+    active_main_repositories = []
+    commented_community_indexes = []
+    has_active_community = False
+    has_active_repository = False
+    for index, line in enumerate(lines):
+        repository = line.strip()
+        if not repository:
+            continue
+        is_commented = repository.startswith("#")
+        if is_commented:
+            repository = repository[1:].strip()
+        if not repository or repository.startswith("#"):
+            continue
+
+        normalized = repository.rstrip("/")
+        if is_commented:
+            if normalized.endswith("/community"):
+                commented_community_indexes.append(index)
+            continue
+
+        has_active_repository = True
+        if normalized.endswith("/community"):
+            has_active_community = True
+        elif normalized.endswith("/main"):
+            active_main_repositories.append(normalized)
+
+    if not has_active_community:
+        if commented_community_indexes:
+            for index in commented_community_indexes:
+                lines[index] = lines[index].strip()[1:].strip()
+        elif active_main_repositories:
+            lines.extend(
+                f"{repository.removesuffix('/main')}/community"
+                for repository in active_main_repositories
+            )
+        else:
+            if not has_active_repository:
+                lines.append(f"https://dl-cdn.alpinelinux.org/alpine/{ALPINE_BRANCH}/main")
+            lines.append(f"https://dl-cdn.alpinelinux.org/alpine/{ALPINE_BRANCH}/community")
+
+    repositories_file.write_text("\n".join(lines).rstrip() + "\n")
+
+
 def provision_virtio_win_iso(target_root: Path):
     libvirt_images = target_root / "var" / "lib" / "libvirt" / "images"
     libvirt_images.mkdir(parents=True, exist_ok=True)
@@ -1351,6 +1399,7 @@ def bootstrap_distro(
         download_cached_file(url, alpine_tar)
         run(["tar", "-xzf", str(alpine_tar), "-C", str(target)])
         shutil.copy("/etc/resolv.conf", target / "etc" / "resolv.conf")
+        enable_alpine_community_repositories(target)
         alpine_apk_cache = package_cache_root / f"alpine_{a_arch}" / "apk"
         prepare_alpine_cache(target, alpine_apk_cache)
         with chroot_env(target, [(alpine_apk_cache, target / "var" / "cache" / "apk")]):

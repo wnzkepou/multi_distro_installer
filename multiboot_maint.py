@@ -373,6 +373,23 @@ def ensure_alpine_kernel_update_hook(root_dir: Path):
     installer.write_alpine_kernel_hook(root_dir)
 
 
+def enable_alpine_community_repositories():
+    alpine_roots = [
+        POOL_MNT / os_id / "@"
+        for os_id in list_installed_os_folders()
+        if os_id.startswith("alpine")
+    ]
+    if not alpine_roots:
+        print("No installed Alpine systems found.")
+        return
+
+    for root_dir in alpine_roots:
+        installer.enable_alpine_community_repositories(root_dir)
+        with installer.chroot_env(root_dir, mount_efivars=False):
+            installer.chroot_run(root_dir, ["/sbin/apk", "update"])
+        print(f"Enabled Alpine Community repositories for {root_dir.parent.name}.")
+
+
 def main():
     if os.geteuid() != 0:
         sys.exit("Run this maintenance helper as root.")
@@ -387,7 +404,8 @@ def main():
             print("  [3] Wipe a single OS (<os_folder> + swapfile + rEFInd entry)")
             print("  [4] Repair Alpine kernel signatures & sync rEFInd entries")
             print("  [5] Add / Reinstall a single OS into existing pool")
-            print("  [6] Exit")
+            print("  [6] Enable Alpine Community repositories")
+            print("  [7] Exit")
 
             choice = input("Select action: ").strip()
             if choice == "1":
@@ -401,6 +419,8 @@ def main():
             elif choice == "5":
                 add_or_reinstall_single_os(p_efi, p_boot, p_btrfs)
             elif choice == "6":
+                enable_alpine_community_repositories()
+            elif choice == "7":
                 break
             else:
                 print("Invalid choice.")
