@@ -134,6 +134,22 @@ def get_arch_spec() -> dict[str, str]:
     sys.exit(f"Error: Unsupported CPU architecture '{raw}'. Supported: arm64/aarch64, amd64/x86_64.")
 
 
+def get_rpmfusion_release_packages() -> list[str]:
+    release = subprocess.run(
+        ["rpm", "-E", "%fedora"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    if not release.isdigit():
+        raise RuntimeError(f"Unable to determine Fedora release version from rpm: {release!r}")
+
+    return [
+        f"https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-{release}.noarch.rpm",
+        f"https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-{release}.noarch.rpm",
+    ]
+
+
 def run(cmd: list, check: bool = True, input_text: str | None = None):
     print(f"[EXEC] {' '.join(map(str, cmd))}")
     return subprocess.run(cmd, check=check, text=True, input=input_text)
@@ -1280,13 +1296,14 @@ def bootstrap_distro(
         fedora_cache = package_cache_root / f"fedora_{arch['fedora_arch']}"
         fedora_cache.mkdir(parents=True, exist_ok=True)
         cache_arg = ["--setopt=keepcache=True", f"--setopt=cachedir={fedora_cache}"]
+        rpmfusion_release_packages = get_rpmfusion_release_packages()
         cmd = [
             "dnf", "-y", "--use-host-config", f"--installroot={target}", f"--forcearch={arch['fedora_arch']}",
             "install", "@core", "@virtualization", arch["fedora_efi_pkg"], "swtpm", "swtpm-tools",
             "kernel", "btrfs-progs", "snapper", "libdnf5-plugin-actions",
             "sudo", "akmods", "kmodtool", "openssl", "mokutil",
             f"shim-{sfx}", f"grub2-efi-{sfx}", distro["desktop"],
-        ] + distro.get("initial_packages", []) + cache_arg
+        ] + distro.get("initial_packages", []) + rpmfusion_release_packages + cache_arg
         with chroot_env(target, mount_run=False, mount_efivars=False):
             run(cmd)
     elif distro["type"] == "debian":
