@@ -1,38 +1,24 @@
 #!/usr/bin/env python3
 import argparse
 import os
-import platform
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
+from multiboot_common import VIRTIO_WIN_URL
+from multiboot_common import get_vm_arch_spec as _get_vm_arch_spec
+from multiboot_common import run_command as run
+
 LIBVIRT_IMAGES = Path("/var/lib/libvirt/images")
 VIRTIO_ISO = LIBVIRT_IMAGES / "virtio-win.iso"
-VIRTIO_WIN_URL = "https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/virtio-win.iso"
 
 
 def get_vm_arch_spec() -> dict[str, str]:
-    raw = platform.machine().lower()
-    if raw in ("aarch64", "arm64"):
-        return {
-            "family": "arm64",
-            "libvirt_arch": "aarch64",
-            "machine": "virt",
-            "win_arch": "arm64",
-            "driver_arch": "ARM64",
-            "tpm_model": "tpm-tis-device",
-        }
-    if raw in ("x86_64", "amd64"):
-        return {
-            "family": "amd64",
-            "libvirt_arch": "x86_64",
-            "machine": "q35",
-            "win_arch": "amd64",
-            "driver_arch": "amd64",
-            "tpm_model": "tpm-crb",
-        }
-    sys.exit(f"Error: Unsupported host CPU architecture '{raw}'.")
+    try:
+        return _get_vm_arch_spec()
+    except ValueError as exc:
+        sys.exit(f"Error: Unsupported host CPU architecture '{exc}'.")
 
 
 def build_autounattend_xml(win_arch: str, driver_arch: str) -> str:
@@ -86,11 +72,6 @@ def build_autounattend_xml(win_arch: str, driver_arch: str) -> str:
   </settings>
 </unattend>
 """
-
-
-def run(cmd: list, check: bool = True):
-    print(f"[EXEC] {' '.join(map(str, cmd))}")
-    return subprocess.run(cmd, check=check, text=True)
 
 
 def locate_uefi_firmware(family: str) -> tuple[Path, Path]:

@@ -3,7 +3,6 @@ import errno
 import getpass
 import json
 import os
-import platform
 import shutil
 import stat
 import subprocess
@@ -13,6 +12,10 @@ import time
 import zipfile
 from contextlib import contextmanager
 from pathlib import Path
+from typing import NotRequired, TypedDict
+
+from multiboot_common import VIRTIO_WIN_URL, get_installer_arch_spec
+from multiboot_common import run_command as run
 
 CACHE_DIR = Path("/tmp/multiboot_installer_cache")
 LEGACY_CACHE_DIR = Path("/var/cache/multiboot_installer")
@@ -21,7 +24,6 @@ MOK_DIR = CACHE_DIR / "mok"
 MOUNT_ROOT = Path("/mnt/multiboot_target")
 BTRFS_OPTS = "defaults,noatime,compress=zstd:1,space_cache=v2"
 BTRFS_NOCOW_OPTS = "defaults,noatime,nodatacow"
-VIRTIO_WIN_URL = "https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/virtio-win.iso"
 REFIND_VERSION = "0.14.2"
 REFIND_ZIP_URL = f"https://sourceforge.net/projects/refind/files/{REFIND_VERSION}/refind-bin-{REFIND_VERSION}.zip/download"
 ALPINE_BRANCH = "v3.24"
@@ -29,7 +31,20 @@ ALPINE_VERSION = "3.24.4"
 EFI_PARTITION_END_MIB = 1025
 BOOT_PARTITION_END_MIB = 5121
 
-DISTROS = {
+
+class DistroConfig(TypedDict):
+    id: str
+    name: str
+    type: str
+    desktop: str
+    initial_packages: NotRequired[list[str]]
+    dm: str | None
+    dm_subvol: str | None
+    dm_mount: str | None
+    swap_gb: int
+
+
+DISTROS: dict[str, DistroConfig] = {
     "1": {
         "id": "fedora_kde",
         "name": "Fedora KDE",
@@ -103,35 +118,21 @@ DISTROS = {
 
 
 def get_arch_spec() -> dict[str, str]:
-    """Returns architecture-specific naming across Fedora, Debian, Alpine, UEFI, and QEMU."""
-    raw = platform.machine().lower()
-    if raw in ("aarch64", "arm64"):
-        return {
-            "family": "arm64",
-            "fedora_arch": "aarch64",
-            "debian_arch": "arm64",
-            "alpine_arch": "aarch64",
-            "efi_suffix": "aa64",
-            "qemu_system": "qemu-system-aarch64",
-            "debian_qemu_pkg": "qemu-system-arm",
-            "debian_efi_pkg": "qemu-efi-aarch64",
-            "fedora_efi_pkg": "edk2-aarch64",
-            "alpine_efi_pkg": "aavmf",
-        }
-    if raw in ("x86_64", "amd64"):
-        return {
-            "family": "amd64",
-            "fedora_arch": "x86_64",
-            "debian_arch": "amd64",
-            "alpine_arch": "x86_64",
-            "efi_suffix": "x64",
-            "qemu_system": "qemu-system-x86_64",
-            "debian_qemu_pkg": "qemu-system-x86",
-            "debian_efi_pkg": "ovmf",
-            "fedora_efi_pkg": "edk2-ovmf",
-            "alpine_efi_pkg": "ovmf",
-        }
-    sys.exit(f"Error: Unsupported CPU architecture '{raw}'. Supported: arm64/aarch64, amd64/x86_64.")
+    try:
+        return get_installer_arch_spec()
+    except ValueError as exc:
+        raw = str(exc)
+        sys.exit(f"Error: Unsupported CPU architecture '{raw}'. Supported: arm64/aarch64, amd64/x86_64.")
+
+
+def get_dm_subvolume_config(distro: DistroConfig) -> tuple[str, str] | None:
+    dm_subvol = distro["dm_subvol"]
+    dm_mount = distro["dm_mount"]
+    if dm_subvol is None and dm_mount is None:
+        return None
+    if dm_subvol is None or dm_mount is None:
+        raise ValueError(f"Incomplete display-manager mount configuration for '{distro['id']}'.")
+    return dm_subvol, dm_mount
 
 
 def get_rpmfusion_release_packages() -> list[str]:
@@ -148,11 +149,6 @@ def get_rpmfusion_release_packages() -> list[str]:
         f"https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-{release}.noarch.rpm",
         f"https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-{release}.noarch.rpm",
     ]
-
-
-def run(cmd: list, check: bool = True, input_text: str | None = None):
-    print(f"[EXEC] {' '.join(map(str, cmd))}")
-    return subprocess.run(cmd, check=check, text=True, input=input_text)
 
 
 def set_target_passwords(target: Path, username: str, password: str):
@@ -677,7 +673,7 @@ def create_partitions(disk: str) -> tuple[str, str, str]:
     return p_efi, p_boot, p_btrfs
 
 
-def select_distros(single_mode: bool = False) -> list[dict]:
+def select_distros(single_mode: bool = False) -> list[DistroConfig]:
     arch = get_arch_spec()
     print(f"\n--- Select Target Systems ({arch['family']} / {arch['fedora_arch']}) ---")
     for key, info in DISTROS.items():
@@ -707,12 +703,13 @@ def ensure_shared_subvolumes(top_mnt: Path):
     run(["chattr", "+C", str(shared_dir / "@libvirt")])
 
 
-def create_single_os_subvolumes(top_mnt: Path, distro: dict):
+def create_single_os_subvolumes(top_mnt: Path, distro: DistroConfig):
     os_dir = top_mnt / distro["id"]
     os_dir.mkdir(parents=True, exist_ok=True)
     distro_subvols = ["@", "@home", "@snapshots", "@var_log", "@var_cache", "@var_tmp"]
-    if distro["dm_subvol"]:
-        distro_subvols.append(distro["dm_subvol"])
+    dm_config = get_dm_subvolume_config(distro)
+    if dm_config:
+        distro_subvols.append(dm_config[0])
     for sv in distro_subvols:
         sv_path = os_dir / sv
         if not sv_path.exists():
@@ -740,7 +737,7 @@ def wipe_os_folder_subvolumes(top_mnt: Path, os_id: str):
         swapfile.unlink()
 
 
-def create_btrfs_subvolumes(p_btrfs: str, selected_distros: list[dict]):
+def create_btrfs_subvolumes(p_btrfs: str, selected_distros: list[DistroConfig]):
     top_mnt = MOUNT_ROOT / "btrfs_top"
     top_mnt.mkdir(parents=True, exist_ok=True)
     run(["mount", "-o", "subvolid=5", p_btrfs, str(top_mnt)])
@@ -874,7 +871,7 @@ def provision_virtio_win_iso(target_root: Path):
     target_iso.chmod(0o644)
 
 
-def generate_fstab(target_root: Path, p_efi: str, p_boot: str, p_btrfs: str, distro: dict):
+def generate_fstab(target_root: Path, p_efi: str, p_boot: str, p_btrfs: str, distro: DistroConfig):
     did = distro["id"]
     uuid_btrfs = subprocess.check_output(["blkid", "-s", "UUID", "-o", "value", p_btrfs], text=True).strip()
     uuid_efi = subprocess.check_output(["blkid", "-s", "UUID", "-o", "value", p_efi], text=True).strip()
@@ -895,9 +892,11 @@ def generate_fstab(target_root: Path, p_efi: str, p_boot: str, p_btrfs: str, dis
         f"/swap/swapfile_{did}  none                   swap   defaults,pri=10  0 0",
         f"UUID={uuid_efi}    /boot/efi                vfat   umask=0077  0 2",
     ]
-    if distro["dm_subvol"]:
+    dm_config = get_dm_subvolume_config(distro)
+    if dm_config:
+        dm_subvol, dm_mount = dm_config
         lines.append(
-            f"UUID={uuid_btrfs}  {distro['dm_mount']}  btrfs  subvol={did}/{distro['dm_subvol']},{BTRFS_OPTS}  0 0"
+            f"UUID={uuid_btrfs}  {dm_mount}  btrfs  subvol={did}/{dm_subvol},{BTRFS_OPTS}  0 0"
         )
     if distro["type"] == "fedora":
         lines.append(f"UUID={uuid_boot}   /boot                ext4   defaults  0 2")
@@ -907,7 +906,7 @@ def generate_fstab(target_root: Path, p_efi: str, p_boot: str, p_btrfs: str, dis
     fstab_path.write_text("\n".join(lines) + "\n")
 
 
-def configure_snapper_baseline(target: Path, p_btrfs: str, distro: dict, user_cfg: dict):
+def configure_snapper_baseline(target: Path, p_btrfs: str, distro: DistroConfig, user_cfg: dict):
     did = distro["id"]
     dtype = distro["type"]
     if dtype == "alpine":
@@ -1018,7 +1017,7 @@ def write_alpine_kernel_hook(target: Path):
     hook_script.chmod(0o755)
 
 
-def configure_secure_boot_module_signing(target: Path, distro: dict, mok: dict[str, Path]):
+def configure_secure_boot_module_signing(target: Path, distro: DistroConfig, mok: dict[str, Path]):
     dtype = distro["type"]
     print(f"--- Configuring Secure Boot Module & Kernel Signing for {distro['name']} ---")
     sys_mok_dir = target / "etc" / "secureboot-mok"
@@ -1102,7 +1101,13 @@ def configure_secure_boot_module_signing(target: Path, distro: dict, mok: dict[s
         write_alpine_kernel_hook(target)
 
 
-def configure_post_chroot(target: Path, p_btrfs: str, distro: dict, user_cfg: dict, mok: dict[str, Path]):
+def configure_post_chroot(
+    target: Path,
+    p_btrfs: str,
+    distro: DistroConfig,
+    user_cfg: dict,
+    mok: dict[str, Path],
+):
     did = distro["id"]
     dtype = distro["type"]
     uname = user_cfg["username"]
@@ -1298,7 +1303,7 @@ def bootstrap_distro(
     p_efi: str,
     p_boot: str,
     p_btrfs: str,
-    distro: dict,
+    distro: DistroConfig,
     user_cfg: dict,
     mok: dict[str, Path],
 ) -> dict:
@@ -1324,10 +1329,12 @@ def bootstrap_distro(
         run(["mount", "-o", f"subvol={sv_path},{opts}", p_btrfs, str(target / mnt)])
 
     package_cache_root = prepare_target_package_cache(target)
-    if distro["dm_subvol"]:
-        dm_path = target / distro["dm_mount"].lstrip("/")
+    dm_config = get_dm_subvolume_config(distro)
+    if dm_config:
+        dm_subvol, dm_mount = dm_config
+        dm_path = target / dm_mount.lstrip("/")
         dm_path.mkdir(parents=True, exist_ok=True)
-        run(["mount", "-o", f"subvol={did}/{distro['dm_subvol']},{BTRFS_OPTS}", p_btrfs, str(dm_path)])
+        run(["mount", "-o", f"subvol={did}/{dm_subvol},{BTRFS_OPTS}", p_btrfs, str(dm_path)])
 
     if distro["type"] == "fedora":
         (target / "boot").mkdir(parents=True, exist_ok=True)

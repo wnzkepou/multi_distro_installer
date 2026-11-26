@@ -128,8 +128,8 @@ sudo ./win11_vm.py --register-only
 
 GitHub Actions (`.github/workflows/ci.yml`) runs on every push and pull request to `main`/`master` across a 2×2 matrix (Python 3.11 & 3.12 × simulated `aarch64` & `x86_64`):
 
-1. Ruff Linter & Formatter: Enforces clean style and catches unused imports or syntax issues across `multi_distro_installer.py`, `multiboot_maint.py`, and `win11_vm.py`.
-2. Mypy Static Typecheck: Validates type annotations across all three Python modules.
+1. Ruff Linter & Formatter: Enforces clean style and catches unused imports or syntax issues across the shared helper and all three entry-point scripts.
+2. Mypy Static Typecheck: Validates type annotations across all four Python modules.
 3. Dual-Arch Contract Smoke Test: Verifies architecture resolution (`aa64` / `virt` / `tpm-tis-device` vs `x64` / `q35` / `tpm-crb`) without side effects.
 
 ## Repository Structure
@@ -138,6 +138,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every push and pull request 
 .
 ├── .github/workflows/ci.yml    # Dual-arch CI matrix (Ruff lint/format, Mypy typecheck, contract tests)
 ├── .gitignore                  # Protects MOK private keys, caches, ISOs, VM images, and bytecode
+├── multiboot_common.py         # Shared architecture, command, and download configuration
 ├── multi_distro_installer.py   # Preflight, GPT/Btrfs setup, chroot bootstrap, Snapper & Secure Boot
 ├── multiboot_maint.py          # Interactive pool inspector, Snapper rollback, rEFInd sync & single-OS add
 ├── win11_vm.py                 # Dual-arch Windows 11 KVM guest provisioner & cross-distro VM registrar

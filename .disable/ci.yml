@@ -26,11 +26,11 @@ jobs:
       - name: Install linter & type checker
         run: uv pip install --system ruff mypy
       - name: Run Ruff linter across all scripts
-        run: ruff check multi_distro_installer.py multiboot_maint.py win11_vm.py
+        run: ruff check multiboot_common.py multi_distro_installer.py multiboot_maint.py win11_vm.py
       - name: Run Ruff formatter check
-        run: ruff format --check multi_distro_installer.py multiboot_maint.py win11_vm.py
+        run: ruff format --check multiboot_common.py multi_distro_installer.py multiboot_maint.py win11_vm.py
       - name: Run Mypy static type check across all scripts
-        run: mypy --ignore-missing-imports multi_distro_installer.py multiboot_maint.py win11_vm.py
+        run: mypy --ignore-missing-imports multiboot_common.py multi_distro_installer.py multiboot_maint.py win11_vm.py
       - name: Verify dual-architecture resolution & module contracts
         env:
           SIM_ARCH: ${{ matrix.sim-arch }}

@@ -2,22 +2,18 @@
 import os
 import re
 import shutil
+import subprocess
 import sys
 import time
-import subprocess
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import multi_distro_installer as installer
+from multiboot_common import run_command as run
 
 POOL_MNT = Path("/mnt/multiboot_maint_pool")
 EFI_MNT = Path("/mnt/multiboot_maint_efi")
 BOOT_MNT = Path("/mnt/multiboot_maint_boot")
-
-
-def run(cmd, check=True):
-    print(f"[EXEC] {' '.join(map(str, cmd))}")
-    return subprocess.run(cmd, check=check, text=True)
 
 
 def find_partitions():
@@ -252,18 +248,11 @@ def sync_refind_kernels(p_efi: str, p_boot: str, p_btrfs: str):
         "scanfor manual,external",
         "",
     ]
+    distro_names = {distro["id"]: distro["name"] for distro in installer.DISTROS.values()}
 
     for os_id in list_installed_os_folders():
         root_dir = POOL_MNT / os_id / "@"
-        pretty_name_map = {
-            "fedora_kde": "Fedora KDE",
-            "fedora_gnome": "Fedora GNOME",
-            "debian_gnome": "Debian GNOME",
-            "debian_kde": "Debian KDE",
-            "alpine_xfce": "Alpine XFCE",
-            "alpine_sway": "Alpine Sway",
-        }
-        pretty_name = pretty_name_map.get(os_id, os_id.replace("_", " ").title())
+        pretty_name = distro_names.get(os_id, os_id.replace("_", " ").title())
 
         if os_id.startswith("fedora") and p_boot:
             kernels = sorted(BOOT_MNT.glob("vmlinuz-*"))
